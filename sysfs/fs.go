@@ -26,6 +26,15 @@ type FS struct {
 	sys fs.FS
 }
 
+// Filter checks the potential device name to see if it should be ignored. There
+// is no guarantee that a valid device name is passed, it is just an unchecked
+// entry on the filesystem (eg potentially a subdirectory instead of a device
+// name).
+type Filter interface {
+	Ignored(name string) bool // skip device name before expensive checks
+	HasNoFilters() bool       // true if Ignored(string) would always return false
+}
+
 // DefaultMountPoint is the common mount point of the sys filesystem.
 const DefaultMountPoint = fs.DefaultSysMountPoint
 
@@ -42,5 +51,5 @@ func NewFS(mountPoint string) (FS, error) {
 	if err != nil {
 		return FS{}, err
 	}
-	return FS{fs}, nil
+	return FS{sys: fs}, nil
 }

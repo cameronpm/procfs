@@ -18,6 +18,7 @@ package sysfs
 
 import (
 	"reflect"
+	"regexp"
 	"testing"
 )
 
@@ -37,6 +38,69 @@ func TestNewNetClassDevices(t *testing.T) {
 	}
 	if devices[0] != "eth0" {
 		t.Errorf("Found unexpected device, want %s, have %s", "eth0", devices[0])
+	}
+}
+
+type testFilter struct {
+	allow *regexp.Regexp
+}
+
+func (tf *testFilter) Ignored(name string) bool {
+	return tf.allow != nil && !tf.allow.MatchString(name)
+}
+func (tf *testFilter) HasNoFilters() bool { return false }
+
+func TestNewNetClassDevicesFilterEmpty(t *testing.T) {
+	fs, err := NewFS(sysTestFixtures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	devices, err := fs.NetClassDevicesFiltered(&testFilter{nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(devices) != 1 {
+		t.Errorf("Unexpected number of devices, want %d, have %d", 1, len(devices))
+	}
+	if devices[0] != "eth0" {
+		t.Errorf("Found unexpected device, want %s, have %s", "eth0", devices[0])
+	}
+}
+
+func TestNewNetClassDevicesFilterAllow(t *testing.T) {
+	fs, err := NewFS(sysTestFixtures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	devices, err := fs.NetClassDevicesFiltered(&testFilter{regexp.MustCompile(`^eth0$`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(devices) != 1 {
+		t.Errorf("Unexpected number of devices, want %d, have %d", 1, len(devices))
+	}
+	if devices[0] != "eth0" {
+		t.Errorf("Found unexpected device, want %s, have %s", "eth0", devices[0])
+	}
+}
+
+func TestNewNetClassDevicesFilterDeny(t *testing.T) {
+	fs, err := NewFS(sysTestFixtures)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	devices, err := fs.NetClassDevicesFiltered(&testFilter{regexp.MustCompile(`^ppp`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(devices) != 0 {
+		t.Errorf("Unexpected number of devices, want %d, have %d", 0, len(devices))
 	}
 }
 

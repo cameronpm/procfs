@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/prometheus/procfs/internal/util"
 )
@@ -82,6 +83,50 @@ func (fs FS) NetClassDevices() ([]string, error) {
 	return res, nil
 }
 
+// NetClassDevicesFiltered scans /sys/class/net for devices and returns them as
+// a list of names.
+//
+// If the filter is provided, a potential device name is passed in before a
+// further more expensive validity check is performed.
+func (fs FS) NetClassDevicesFiltered(filter Filter) ([]string, error) {
+	if filter == nil || filter.HasNoFilters() {
+		return fs.NetClassDevices()
+	}
+
+	var res []string
+	path := fs.sys.Path(netclassPath)
+
+	dirH, err := os.Open(path)
+	if err != nil {
+		return res, fmt.Errorf("cannot open dir %q: %w", path, err)
+	}
+	defer dirH.Close()
+	names, err := dirH.Readdirnames(-1)
+	if err != nil {
+		return res, fmt.Errorf("cannot access dir %q: %w", path, err)
+	}
+
+	for _, deviceName := range names {
+		if filter.Ignored(deviceName) {
+			continue
+		}
+		full := filepath.Join(path, deviceName)
+		fi, err := os.Stat(full)
+		if err != nil {
+			return res, fmt.Errorf("cannot stat %q: %w", full, err)
+		}
+		if fi.Mode().IsRegular() {
+			continue
+		}
+		res = append(res, deviceName)
+	}
+
+	// File.Readdirnames does not return the dir names in sorted order
+	sort.Strings(res)
+
+	return res, nil
+}
+
 // NetClassByIface returns info for a single net interfaces (iface).
 func (fs FS) NetClassByIface(devicePath string) (*NetClassIface, error) {
 	path := fs.sys.Path(netclassPath)
@@ -97,7 +142,13 @@ func (fs FS) NetClassByIface(devicePath string) (*NetClassIface, error) {
 
 // NetClass returns info for all net interfaces (iface) read from /sys/class/net/<iface>.
 func (fs FS) NetClass() (NetClass, error) {
-	devices, err := fs.NetClassDevices()
+	return fs.NetClassFiltered(nil)
+}
+
+// NetClass returns info for net interfaces (iface) read from
+// /sys/class/net/<iface> that pass the (potential) device name filter check.
+func (fs FS) NetClassFiltered(filter Filter) (NetClass, error) {
+	devices, err := fs.NetClassDevicesFiltered(filter)
 	if err != nil {
 		return nil, err
 	}
